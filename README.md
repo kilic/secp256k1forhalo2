@@ -1,4 +1,10 @@
-# `pasta_curves`
+# `secp256k1forhalo2`
+
+__Do not use in production__
+
+This crate provides `halo2` compatible `secp256k1` elliptic curve implementation. Intention of this crate is to generate circuit witnesses for ECDSA signature verification.
+
+Original readme as follows:
 
 This crate provides an implementation of the Pasta elliptic curve constructions,
 Pallas and Vesta. More details about the Pasta curves can be found

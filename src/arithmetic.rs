@@ -4,14 +4,13 @@
 //! This module is temporary, and the extension traits defined here are expected to be
 //! upstreamed into the `ff` and `group` crates after some refactoring.
 
-mod curves;
 mod fields;
 
 pub(crate) use fields::*;
 
-pub use curves::*;
 #[cfg(feature = "std")]
 pub use fields::*;
+use pasta_curves::arithmetic::FieldExt;
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate

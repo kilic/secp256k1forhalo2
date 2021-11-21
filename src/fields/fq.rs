@@ -15,13 +15,13 @@ use ff::{FieldBits, PrimeFieldBits};
 use crate::arithmetic::{adc, mac, sbb};
 
 #[cfg(feature = "std")]
-use crate::arithmetic::{FieldExt, Group, SqrtRatio, SqrtTables};
+use pasta_curves::arithmetic::{FieldExt, Group, SqrtRatio, SqrtTables};
 
 /// This represents an element of $\mathbb{F}_q$ where
 ///
-/// `q = 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001`
+/// `q = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141`
 ///
-/// is the base field of the Vesta curve.
+/// is the scalar field of the secp256k1 curve.
 // The internal representation of this type is four 64-bit unsigned
 // integers in little-endian order. `Fq` values are always in
 // Montgomery form; i.e., Fq(a) = aR mod q, with R = 2^256.
@@ -104,25 +104,26 @@ impl ConditionallySelectable for Fq {
 }
 
 /// Constant representing the modulus
-/// q = 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001
+/// q = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+
 const MODULUS: Fq = Fq([
-    0x8c46eb2100000001,
-    0x224698fc0994a8dd,
-    0x0,
-    0x4000000000000000,
+    0xbfd25e8cd0364141,
+    0xbaaedce6af48a03b,
+    0xfffffffffffffffe,
+    0xffffffffffffffff,
 ]);
 
 /// The modulus as u32 limbs.
 #[cfg(not(target_pointer_width = "64"))]
 const MODULUS_LIMBS_32: [u32; 8] = [
-    0x0000_0001,
-    0x8c46_eb21,
-    0x0994_a8dd,
-    0x2246_98fc,
-    0x0000_0000,
-    0x0000_0000,
-    0x0000_0000,
-    0x4000_0000,
+    0xd036_4141,
+    0xbfd2_5e8c,
+    0xaf48_a03b,
+    0xbaae_dce6,
+    0xffff_fffe,
+    0xffff_ffff,
+    0xffff_ffff,
+    0xffff_ffff,
 ];
 
 impl<'a> Neg for &'a Fq {
@@ -174,71 +175,29 @@ impl_binops_additive!(Fq, Fq);
 impl_binops_multiplicative!(Fq, Fq);
 
 /// INV = -(q^{-1} mod 2^64) mod 2^64
-const INV: u64 = 0x8c46eb20ffffffff;
+const INV: u64 = 0x4b0dff665588b13f;
 
 /// R = 2^256 mod q
-const R: Fq = Fq([
-    0x5b2b3e9cfffffffd,
-    0x992c350be3420567,
-    0xffffffffffffffff,
-    0x3fffffffffffffff,
-]);
+/// 0x14551231950b75fc4402da1732fc9bebf
+const R: Fq = Fq([0x402da1732fc9bebf, 0x4551231950b75fc4, 0x1, 0]);
 
 /// R^2 = 2^512 mod q
+/// 0x9d671cd581c69bc5e697f5e45bcd07c6741496c20e7cf878896cf21467d7d140
 const R2: Fq = Fq([
-    0xfc9678ff0000000f,
-    0x67bb433d891a16e3,
-    0x7fae231004ccf590,
-    0x096d41af7ccfdaa9,
+    0x896cf21467d7d140,
+    0x741496c20e7cf878,
+    0xe697f5e45bcd07c6,
+    0x9d671cd581c69bc5,
 ]);
 
 /// R^3 = 2^768 mod q
+/// 0x555d800c18ef116db1b31347f1d0b2da0017648444d4322c7bc0cfe0e9ff41ed
 const R3: Fq = Fq([
-    0x008b421c249dae4c,
-    0xe13bda50dba41326,
-    0x88fececb8e15cb63,
-    0x07dd97a06e6792c8,
+    0x7bc0cfe0e9ff41ed,
+    0x0017648444d4322c,
+    0xb1b31347f1d0b2da,
+    0x555d800c18ef116d,
 ]);
-
-/// `GENERATOR = 5 mod q` is a generator of the `q - 1` order multiplicative
-/// subgroup, or in other words a primitive root of the field.
-const GENERATOR: Fq = Fq::from_raw([
-    0x0000_0000_0000_0005,
-    0x0000_0000_0000_0000,
-    0x0000_0000_0000_0000,
-    0x0000_0000_0000_0000,
-]);
-
-const S: u32 = 32;
-
-/// GENERATOR^t where t * 2^s + 1 = q
-/// with t odd. In other words, this
-/// is a 2^s root of unity.
-const ROOT_OF_UNITY: Fq = Fq::from_raw([
-    0xa70e2c1102b6d05f,
-    0x9bb97ea3c106f049,
-    0x9e5c4dfd492ae26e,
-    0x2de6a9b8746d3f58,
-]);
-
-/// GENERATOR^{2^s} where t * 2^s + 1 = q
-/// with t odd. In other words, this
-/// is a t root of unity.
-#[cfg(feature = "std")]
-const DELTA: Fq = Fq::from_raw([
-    0x8494392472d1683c,
-    0xe3ac3376541d1140,
-    0x06f0a88e7f7949f8,
-    0x2237d54423724166,
-]);
-
-/// `(t - 1) // 2` where t * 2^s + 1 = p with t odd.
-const T_MINUS1_OVER2: [u64; 4] = [
-    0x04ca_546e_c623_7590,
-    0x0000_0000_1123_4c7e,
-    0x0000_0000_0000_0000,
-    0x0000_0000_2000_0000,
-];
 
 impl Default for Fq {
     #[inline]
@@ -367,10 +326,21 @@ impl Fq {
         let (r4, carry) = mac(r4, k, MODULUS.0[1], carry);
         let (r5, carry) = mac(r5, k, MODULUS.0[2], carry);
         let (r6, carry) = mac(r6, k, MODULUS.0[3], carry);
-        let (r7, _) = adc(r7, carry2, carry);
+        let (r7, carry2) = adc(r7, carry2, carry);
 
         // Result may be within MODULUS of the correct value
-        (&Fq([r4, r5, r6, r7])).sub(&MODULUS)
+        let (d0, borrow) = sbb(r4, MODULUS.0[0], 0);
+        let (d1, borrow) = sbb(r5, MODULUS.0[1], borrow);
+        let (d2, borrow) = sbb(r6, MODULUS.0[2], borrow);
+        let (d3, borrow) = sbb(r7, MODULUS.0[3], borrow);
+        let (_, borrow) = sbb(carry2, 0, borrow);
+
+        let (d0, carry) = adc(d0, MODULUS.0[0] & borrow, 0);
+        let (d1, carry) = adc(d1, MODULUS.0[1] & borrow, carry);
+        let (d2, carry) = adc(d2, MODULUS.0[2] & borrow, carry);
+        let (d3, _) = adc(d3, MODULUS.0[3] & borrow, carry);
+
+        Fq([d0, d1, d2, d3])
     }
 
     /// Multiplies `rhs` by `self`, returning the result.
@@ -425,11 +395,22 @@ impl Fq {
         let (d0, carry) = adc(self.0[0], rhs.0[0], 0);
         let (d1, carry) = adc(self.0[1], rhs.0[1], carry);
         let (d2, carry) = adc(self.0[2], rhs.0[2], carry);
-        let (d3, _) = adc(self.0[3], rhs.0[3], carry);
+        let (d3, carry) = adc(self.0[3], rhs.0[3], carry);
 
         // Attempt to subtract the modulus, to ensure the value
         // is smaller than the modulus.
-        (&Fq([d0, d1, d2, d3])).sub(&MODULUS)
+        let (d0, borrow) = sbb(d0, MODULUS.0[0], 0);
+        let (d1, borrow) = sbb(d1, MODULUS.0[1], borrow);
+        let (d2, borrow) = sbb(d2, MODULUS.0[2], borrow);
+        let (d3, borrow) = sbb(d3, MODULUS.0[3], borrow);
+        let (_, borrow) = sbb(carry, 0, borrow);
+
+        let (d0, carry) = adc(d0, MODULUS.0[0] & borrow, 0);
+        let (d1, carry) = adc(d1, MODULUS.0[1] & borrow, carry);
+        let (d2, carry) = adc(d2, MODULUS.0[2] & borrow, carry);
+        let (d3, _) = adc(d3, MODULUS.0[3] & borrow, carry);
+
+        Fq([d0, d1, d2, d3])
     }
 
     /// Negates `self`.
@@ -528,10 +509,10 @@ impl ff::Field for Fq {
     /// failing if the element is zero.
     fn invert(&self) -> CtOption<Self> {
         let tmp = self.pow_vartime(&[
-            0x8c46eb20ffffffff,
-            0x224698fc0994a8dd,
-            0x0,
-            0x4000000000000000,
+            0xbfd25e8cd036413f,
+            0xbaaedce6af48a03b,
+            0xfffffffffffffffe,
+            0xffffffffffffffff,
         ]);
 
         CtOption::new(tmp, !self.ct_eq(&Self::zero()))
@@ -559,9 +540,9 @@ impl ff::Field for Fq {
 impl ff::PrimeField for Fq {
     type Repr = [u8; 32];
 
-    const NUM_BITS: u32 = 255;
-    const CAPACITY: u32 = 254;
-    const S: u32 = S;
+    const NUM_BITS: u32 = 256;
+    const CAPACITY: u32 = 255;
+    const S: u32 = 6;
 
     fn from_repr(repr: Self::Repr) -> CtOption<Self> {
         let mut tmp = Fq([0, 0, 0, 0]);
@@ -608,11 +589,11 @@ impl ff::PrimeField for Fq {
     }
 
     fn multiplicative_generator() -> Self {
-        GENERATOR
+        unimplemented!();
     }
 
     fn root_of_unity() -> Self {
-        ROOT_OF_UNITY
+        unimplemented!();
     }
 }
 
@@ -671,37 +652,10 @@ lazy_static! {
 
 #[cfg(feature = "std")]
 impl SqrtRatio for Fq {
-    const T_MINUS1_OVER2: [u64; 4] = T_MINUS1_OVER2;
+    const T_MINUS1_OVER2: [u64; 4] = [0, 0, 0, 0];
 
     fn pow_by_t_minus1_over2(&self) -> Self {
-        let sqr = |x: Fq, i: u32| (0..i).fold(x, |x, _| x.square());
-
-        let s10 = self.square();
-        let s11 = s10 * self;
-        let s111 = s11.square() * self;
-        let s1001 = s111 * s10;
-        let s1011 = s1001 * s10;
-        let s1101 = s1011 * s10;
-        let sa = sqr(*self, 129) * self;
-        let sb = sqr(sa, 7) * s1001;
-        let sc = sqr(sb, 7) * s1101;
-        let sd = sqr(sc, 4) * s11;
-        let se = sqr(sd, 6) * s111;
-        let sf = sqr(se, 3) * s111;
-        let sg = sqr(sf, 10) * s1001;
-        let sh = sqr(sg, 4) * s1001;
-        let si = sqr(sh, 5) * s1001;
-        let sj = sqr(si, 5) * s1001;
-        let sk = sqr(sj, 3) * s1001;
-        let sl = sqr(sk, 4) * s1011;
-        let sm = sqr(sl, 4) * s1011;
-        let sn = sqr(sm, 5) * s11;
-        let so = sqr(sn, 4) * self;
-        let sp = sqr(so, 5) * s11;
-        let sq = sqr(sp, 4) * s111;
-        let sr = sqr(sq, 5) * s1011;
-        let ss = sqr(sr, 3) * self;
-        sqr(ss, 4) // st
+        unimplemented!()
     }
 
     fn get_lower_32(&self) -> u32 {
@@ -723,26 +677,17 @@ impl SqrtRatio for Fq {
 #[cfg(feature = "std")]
 impl FieldExt for Fq {
     const MODULUS: &'static str =
-        "0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001";
-    const ROOT_OF_UNITY_INV: Self = Fq::from_raw([
-        0x57eecda0a84b6836,
-        0x4ad38b9084b8a80c,
-        0xf4c8f353124086c1,
-        0x2235e1a7415bf936,
+        "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+    const ROOT_OF_UNITY_INV: Self = Self::zero();
+    const DELTA: Self = Self::zero();
+    const TWO_INV: Self = Self::from_raw([
+        0xdfe92f46681b20a1,
+        0x5d576e7357a4501d,
+        0xffffffffffffffff,
+        0x7fffffffffffffff,
     ]);
-    const DELTA: Self = DELTA;
-    const TWO_INV: Self = Fq::from_raw([
-        0xc623759080000001,
-        0x11234c7e04ca546e,
-        0x0000000000000000,
-        0x2000000000000000,
-    ]);
-    const ZETA: Self = Fq::from_raw([
-        0x2aa9d2e050aa0e4f,
-        0x0fed467d47c033af,
-        0x511db4d81cf70f5a,
-        0x06819a58283e528e,
-    ]);
+
+    const ZETA: Self = Self::zero();
 
     fn from_u128(v: u128) -> Self {
         Fq::from_raw([v as u64, (v >> 64) as u64, 0, 0])
@@ -772,6 +717,10 @@ impl FieldExt for Fq {
 
 #[cfg(all(test, feature = "std"))]
 use ff::Field;
+#[cfg(all(test, feature = "std"))]
+use num_bigint::BigUint;
+#[cfg(all(test, feature = "std"))]
+use num_traits::Num;
 
 #[test]
 fn test_inv() {
@@ -790,148 +739,82 @@ fn test_inv() {
 
 #[cfg(feature = "std")]
 #[test]
-fn test_sqrt() {
-    // NB: TWO_INV is standing in as a "random" field element
-    let v = (Fq::TWO_INV).square().sqrt().unwrap();
-    assert!(v == Fq::TWO_INV || (-v) == Fq::TWO_INV);
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn test_pow_by_t_minus1_over2() {
-    // NB: TWO_INV is standing in as a "random" field element
-    let v = (Fq::TWO_INV).pow_by_t_minus1_over2();
-    assert!(v == ff::Field::pow_vartime(&Fq::TWO_INV, &T_MINUS1_OVER2));
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn test_sqrt_ratio_and_alt() {
-    // (true, sqrt(num/div)), if num and div are nonzero and num/div is a square in the field
-    let num = (Fq::TWO_INV).square();
-    let div = Fq::from(25);
-    let div_inverse = div.invert().unwrap();
-    let expected = Fq::TWO_INV * Fq::from(5).invert().unwrap();
-    let (is_square, v) = Fq::sqrt_ratio(&num, &div);
-    assert!(bool::from(is_square));
-    assert!(v == expected || (-v) == expected);
-
-    let (is_square_alt, v_alt) = Fq::sqrt_alt(&(num * div_inverse));
-    assert!(bool::from(is_square_alt));
-    assert!(v_alt == v);
-
-    // (false, sqrt(ROOT_OF_UNITY * num/div)), if num and div are nonzero and num/div is a nonsquare in the field
-    let num = num * Fq::root_of_unity();
-    let expected = Fq::TWO_INV * Fq::root_of_unity() * Fq::from(5).invert().unwrap();
-    let (is_square, v) = Fq::sqrt_ratio(&num, &div);
-    assert!(!bool::from(is_square));
-    assert!(v == expected || (-v) == expected);
-
-    let (is_square_alt, v_alt) = Fq::sqrt_alt(&(num * div_inverse));
-    assert!(!bool::from(is_square_alt));
-    assert!(v_alt == v);
-
-    // (true, 0), if num is zero
-    let num = Fq::zero();
-    let expected = Fq::zero();
-    let (is_square, v) = Fq::sqrt_ratio(&num, &div);
-    assert!(bool::from(is_square));
-    assert!(v == expected);
-
-    let (is_square_alt, v_alt) = Fq::sqrt_alt(&(num * div_inverse));
-    assert!(bool::from(is_square_alt));
-    assert!(v_alt == v);
-
-    // (false, 0), if num is nonzero and div is zero
-    let num = (Fq::TWO_INV).square();
-    let div = Fq::zero();
-    let expected = Fq::zero();
-    let (is_square, v) = Fq::sqrt_ratio(&num, &div);
-    assert!(!bool::from(is_square));
-    assert!(v == expected);
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn test_zeta() {
-    assert_eq!(
-        format!("{:?}", Fq::ZETA),
-        "0x06819a58283e528e511db4d81cf70f5a0fed467d47c033af2aa9d2e050aa0e4f"
-    );
-    let a = Fq::ZETA;
-    assert!(a != Fq::one());
-    let b = a * a;
-    assert!(b != Fq::one());
-    let c = b * a;
-    assert!(c == Fq::one());
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn test_root_of_unity() {
-    assert_eq!(
-        Fq::root_of_unity().pow_vartime(&[1 << Fq::S, 0, 0, 0]),
-        Fq::one()
-    );
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn test_inv_root_of_unity() {
-    assert_eq!(Fq::ROOT_OF_UNITY_INV, Fq::root_of_unity().invert().unwrap());
-}
-
-#[cfg(feature = "std")]
-#[test]
 fn test_inv_2() {
     assert_eq!(Fq::TWO_INV, Fq::from(2).invert().unwrap());
 }
 
-#[cfg(feature = "std")]
-#[test]
-fn test_delta() {
-    assert_eq!(Fq::DELTA, GENERATOR.pow(&[1u64 << Fq::S, 0, 0, 0]));
-    assert_eq!(
-        Fq::DELTA,
-        Fq::multiplicative_generator().pow(&[1u64 << Fq::S, 0, 0, 0])
-    );
+#[cfg(test)]
+fn fp_to_big(fe: Fq) -> BigUint {
+    let u: [u8; 32] = fe.to_repr().into();
+    BigUint::from_bytes_le(&u[..])
 }
 
-#[cfg(not(target_pointer_width = "64"))]
+#[cfg(test)]
+fn big_modulus() -> BigUint {
+    let modulus_big = BigUint::from_str_radix(
+        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+        16,
+    )
+    .unwrap();
+    modulus_big
+}
+
+#[cfg(feature = "std")]
 #[test]
-fn consistent_modulus_limbs() {
-    for (a, &b) in MODULUS
-        .0
-        .iter()
-        .flat_map(|&limb| {
-            Some(limb as u32)
-                .into_iter()
-                .chain(Some((limb >> 32) as u32))
-        })
-        .zip(MODULUS_LIMBS_32.iter())
-    {
-        assert_eq!(a, b);
+fn test_add_against_big() {
+    let modulus = &big_modulus();
+    for _ in 0..1000 {
+        let a = Fq::rand();
+        let b = Fq::rand();
+        let c = a + b;
+
+        let c_big_0 = fp_to_big(c);
+        let c_big_1 = (fp_to_big(a) + fp_to_big(b)) % modulus;
+
+        assert_eq!(c_big_0, c_big_1);
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
-fn test_from_u512() {
-    assert_eq!(
-        Fq::from_raw([
-            0xe22bd0d1b22cc43e,
-            0x6b84e5b52490a7c8,
-            0x264262941ac9e229,
-            0x27dcfdf361ce4254
-        ]),
-        Fq::from_u512([
-            0x64a80cce0b5a2369,
-            0x84f2ef0501bc783c,
-            0x696e5e63c86bbbde,
-            0x924072f52dc6cc62,
-            0x8288a507c8d61128,
-            0x3b2efb1ef697e3fe,
-            0x75a4998d06855f27,
-            0x52ea589e69712cc0
-        ])
-    );
+fn test_sub_against_big() {
+    let modulus = &big_modulus();
+    for _ in 0..1000 {
+        let a = Fq::rand();
+        let b = Fq::rand();
+        let c = a - b;
+
+        let c_big_0 = fp_to_big(c);
+        let c_big_1 = fp_to_big(a) + modulus;
+        let c_big_1 = (c_big_1 - fp_to_big(b)) % modulus;
+
+        assert_eq!(c_big_0, c_big_1);
+    }
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_mul_against_big() {
+    let modulus = &big_modulus();
+    for _ in 0..1000 {
+        let a = Fq::rand();
+        let b = Fq::rand();
+        let c = a * b;
+        let c_big_0 = fp_to_big(c);
+        let c_big_1 = (fp_to_big(a) * fp_to_big(b)) % modulus;
+        assert_eq!(c_big_0, c_big_1);
+    }
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_square_against_big() {
+    let modulus = &big_modulus();
+    for _ in 0..1000 {
+        let a = Fq::rand();
+        let c = a.square();
+        let c_big_0 = fp_to_big(c);
+        let c_big_1 = (fp_to_big(a) * fp_to_big(a)) % modulus;
+        assert_eq!(c_big_0, c_big_1);
+    }
 }

@@ -19,25 +19,8 @@ mod curves;
 mod fields;
 
 pub mod arithmetic;
-pub mod pallas;
-pub mod vesta;
-
-#[cfg(feature = "std")]
-mod hashtocurve;
 
 pub use curves::*;
 pub use fields::*;
 
 pub extern crate group;
-
-#[cfg(feature = "std")]
-#[test]
-fn test_endo_consistency() {
-    use crate::arithmetic::{CurveExt, FieldExt};
-    use group::Group;
-
-    let a = pallas::Point::generator();
-    assert_eq!(a * pallas::Scalar::ZETA, a.endo());
-    let a = vesta::Point::generator();
-    assert_eq!(a * vesta::Scalar::ZETA, a.endo());
-}
