@@ -481,8 +481,14 @@ impl ff::Field for Fp {
 
     /// Computes the square root of this element, if it exists.
     fn sqrt(&self) -> CtOption<Self> {
-        #[cfg(feature = "std")]
-        unimplemented!();
+        let tmp = self.pow(&[
+            0xffffffffbfffff0c,
+            0xffffffffffffffff,
+            0xffffffffffffffff,
+            0x3fffffffffffffff,
+        ]);
+
+        CtOption::new(tmp, tmp.square().ct_eq(self))
     }
 
     /// Computes the multiplicative inverse of this element,
@@ -715,6 +721,14 @@ fn test_inv() {
 #[test]
 fn test_inv_2() {
     assert_eq!(Fp::TWO_INV, Fp::from(2).invert().unwrap());
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_sqrt() {
+    // NB: TWO_INV is standing in as a "random" field element
+    let v = (Fp::TWO_INV).square().sqrt().unwrap();
+    assert!(v == Fp::TWO_INV || (-v) == Fp::TWO_INV);
 }
 
 #[cfg(test)]
