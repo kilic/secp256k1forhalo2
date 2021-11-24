@@ -16,6 +16,7 @@ use group::{
     Curve as _, Group as _, GroupEncoding,
 };
 use rand::RngCore;
+use std::convert::TryInto;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{Fp, Fq};
@@ -249,23 +250,6 @@ macro_rules! new_curve_impl {
             type Affine = $name_affine;
         }
 
-        impl GroupEncoding for $name {
-            type Repr = [u8; 32];
-
-            fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
-                $name_affine::from_bytes(bytes).map(Self::from)
-            }
-
-            fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                // We can't avoid curve checks when parsing a compressed encoding.
-                $name_affine::from_bytes(bytes).map(Self::from)
-            }
-
-            fn to_bytes(&self) -> Self::Repr {
-                $name_affine::from(self).to_bytes()
-            }
-        }
-
         impl<'a> From<&'a $name_affine> for $name {
             fn from(p: &'a $name_affine) -> $name {
                 p.to_curve()
@@ -477,7 +461,7 @@ macro_rules! new_curve_impl {
                     .iter()
                     .rev()
                     .flat_map(|byte| (0..8).rev().map(move |i| Choice::from((byte >> i) & 1u8)))
-                    .skip(1)
+
                 {
                     acc = acc.double();
                     acc = $name::conditional_select(&acc, &(acc + self), bit);
@@ -588,7 +572,6 @@ macro_rules! new_curve_impl {
                     .iter()
                     .rev()
                     .flat_map(|byte| (0..8).rev().map(move |i| Choice::from((byte >> i) & 1u8)))
-                    .skip(1)
                 {
                     acc = acc.double();
                     acc = $name::conditional_select(&acc, &(acc + self), bit);
@@ -646,53 +629,7 @@ macro_rules! new_curve_impl {
             }
         }
 
-        impl GroupEncoding for $name_affine {
-            type Repr = [u8; 32];
 
-            fn from_bytes(bytes: &[u8; 32]) -> CtOption<Self> {
-                let mut tmp = *bytes;
-                let ysign = Choice::from(tmp[31] >> 7);
-                tmp[31] &= 0b0111_1111;
-
-                $base::from_repr(tmp).and_then(|x| {
-                    CtOption::new(Self::identity(), x.is_zero() & (!ysign)).or_else(|| {
-                        let x3 = x.square() * x;
-                        (x3 + $name::curve_constant_b()).sqrt().and_then(|y| {
-                            let sign = y.is_odd();
-
-                            let y = $base::conditional_select(&y, &-y, ysign ^ sign);
-
-                            CtOption::new(
-                                $name_affine {
-                                    x,
-                                    y,
-                                    infinity: Choice::from(0u8),
-                                },
-                                Choice::from(1u8),
-                            )
-                        })
-                    })
-                })
-            }
-
-            fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                // We can't avoid curve checks when parsing a compressed encoding.
-                Self::from_bytes(bytes)
-            }
-
-            fn to_bytes(&self) -> [u8; 32] {
-                // TODO: not constant time
-                if bool::from(self.is_identity()) {
-                    [0; 32]
-                } else {
-                    let (x, y) = (self.x, self.y);
-                    let sign = y.is_odd().unwrap_u8() << 7;
-                    let mut xbytes = x.to_repr();
-                    xbytes[31] |= sign;
-                    xbytes
-                }
-            }
-        }
 
         #[cfg(feature = "std")]
         impl CurveAffine for $name_affine {
@@ -929,6 +866,115 @@ macro_rules! impl_affine_curve_specific {
     };
 }
 
+/// Represents a point in bytes.
+#[derive(Copy, Clone)]
+pub struct Serialized([u8; 64]);
+
+impl Default for Serialized {
+    fn default() -> Self {
+        Self([0u8; 64])
+    }
+}
+
+impl std::fmt::Debug for Serialized {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0[..].fmt(f)
+    }
+}
+
+impl AsRef<[u8]> for Serialized {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for Serialized {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl GroupEncoding for Secp256k1Affine {
+    type Repr = Serialized;
+
+    fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
+        let bytes = bytes.as_ref();
+
+        if bytes == Serialized::default().as_ref() {
+            return CtOption::new(
+                Secp256k1Affine {
+                    x: Fp::zero(),
+                    y: Fp::zero(),
+                    infinity: Choice::from(1u8),
+                },
+                Choice::from(1u8),
+            );
+        }
+
+        let x_bytes: [u8; 32] = bytes[0..32].try_into().unwrap();
+        let y_bytes: [u8; 32] = bytes[32..64].try_into().unwrap();
+
+        let invalid = CtOption::new(
+            Secp256k1Affine {
+                x: Fp::zero(),
+                y: Fp::zero(),
+                infinity: Choice::from(0u8),
+            },
+            Choice::from(0u8),
+        );
+
+        let x = Fp::from_repr(x_bytes);
+        let y = Fp::from_repr(y_bytes);
+
+        if (x.is_none() | y.is_none()).into() {
+            return invalid;
+        } else {
+            let res = Secp256k1Affine {
+                x: x.unwrap(),
+                y: y.unwrap(),
+                infinity: Choice::from(0u8),
+            };
+            CtOption::new(res, res.is_on_curve())
+        }
+    }
+
+    fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
+        // We can't avoid curve checks when parsing a compressed encoding.
+        Self::from_bytes(bytes)
+    }
+
+    fn to_bytes(&self) -> Serialized {
+        // TODO: not constant time
+        if bool::from(self.is_identity()) {
+            Serialized::default()
+        } else {
+            let x_bytes = self.x.to_repr();
+            let y_bytes = self.y.to_repr();
+            let mut ser: [u8; 64] = [0; 64];
+            ser[0..32].copy_from_slice(&x_bytes[..]);
+            ser[32..64].copy_from_slice(&y_bytes[..]);
+            Serialized(ser)
+        }
+    }
+}
+
+impl GroupEncoding for Secp256k1 {
+    type Repr = Serialized;
+
+    fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
+        Secp256k1Affine::from_bytes(bytes).map(Self::from)
+    }
+
+    fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
+        // We can't avoid curve checks when parsing a compressed encoding.
+        Secp256k1Affine::from_bytes(bytes).map(Self::from)
+    }
+
+    fn to_bytes(&self) -> Self::Repr {
+        Secp256k1Affine::from(self).to_bytes()
+    }
+}
+
 new_curve_impl!(
     (pub),
     Secp256k1,
@@ -940,3 +986,10 @@ new_curve_impl!(
     [7, 0, 0, 0],
     general
 );
+
+#[cfg(all(test, feature = "std"))]
+#[test]
+fn test_curve() {
+    use group::tests::curve_tests;
+    curve_tests::<Secp256k1>();
+}
